@@ -151,12 +151,16 @@ def train(args, trainer, task, epoch_itr):
                 extra_meters[k].update(v, log_output['sample_size'])
             else:
                 extra_meters[k].update(v)
-            stats[k] = extra_meters[k].avg
+            stats[k] = extra_meters[k].avg            
+
         progress.log(stats)
+        if i % args.log_interval == 0:
+            for k in ['train_loss', 'train_nll_loss', 'gnorm', 'wps', 'ups']:
+                trainer.get_meter(k).reset()
 
         # ignore the first mini-batch in words-per-second calculation
-        if i == 0:
-            trainer.get_meter('wps').reset()
+        # if i == 0:
+        #     trainer.get_meter('wps').reset()
 
         num_updates = trainer.get_num_updates()
         if args.save_interval_updates > 0 and num_updates % args.save_interval_updates == 0 and num_updates > 0:

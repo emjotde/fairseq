@@ -137,12 +137,12 @@ def get_parser(desc, default_task='translation'):
 
     parser = argparse.ArgumentParser()
     # fmt: off
-    parser.add_argument('--no-progress-bar', action='store_true', help='disable progress bar')
-    parser.add_argument('--log-interval', type=int, default=1000, metavar='N',
+    parser.add_argument('--no-progress-bar', action='store_true', help='disable progress bar', default=True)
+    parser.add_argument('--log-interval', type=int, default=100, metavar='N',
                         help='log progress every N batches (when progress bar is disabled)')
     parser.add_argument('--log-format', default=None, help='log format to use',
                         choices=['json', 'none', 'simple', 'tqdm'])
-    parser.add_argument('--seed', default=1, type=int, metavar='N',
+    parser.add_argument('--seed', default=1111, type=int, metavar='N',
                         help='pseudo random number generator seed')
     parser.add_argument('--cpu', action='store_true', help='use CPU instead of CUDA')
     parser.add_argument('--fp16', action='store_true', help='use FP16')
@@ -150,9 +150,9 @@ def get_parser(desc, default_task='translation'):
                         help='use a memory-efficient version of FP16 training; implies --fp16')
     parser.add_argument('--fp16-init-scale', default=2 ** 7, type=int,
                         help='default FP16 loss scale')
-    parser.add_argument('--fp16-scale-window', type=int,
+    parser.add_argument('--fp16-scale-window', type=int, default=2000,
                         help='number of updates before increasing loss scale')
-    parser.add_argument('--fp16-scale-tolerance', default=0.0, type=float,
+    parser.add_argument('--fp16-scale-tolerance', default=0.05, type=float,
                         help='pct of updates that can overflow before decreasing the loss scale')
     parser.add_argument('--user-dir', default=None,
                         help='path to a python module containing custom extensions (tasks and/or architectures)')
