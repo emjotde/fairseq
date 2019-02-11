@@ -106,6 +106,7 @@ class MultiheadAttention(nn.Module):
             q = self.in_proj_q(query)
             k = self.in_proj_k(key)
             v = self.in_proj_v(value)
+
         q *= self.scaling
 
         if self.bias_k is not None:
@@ -160,6 +161,7 @@ class MultiheadAttention(nn.Module):
                     [key_padding_mask, torch.zeros(key_padding_mask.size(0), 1).type_as(key_padding_mask)], dim=1)
 
         attn_weights = torch.bmm(q, k.transpose(1, 2))
+
         assert list(attn_weights.size()) == [bsz * self.num_heads, tgt_len, src_len]
 
         if attn_mask is not None:
@@ -195,6 +197,7 @@ class MultiheadAttention(nn.Module):
             attn = attn.contiguous().view(tgt_len, bsz, embed_dim)
         else:
             attn = attn.transpose(0, 1).contiguous().view(tgt_len, bsz, embed_dim)
+
         attn = self.out_proj(attn)
 
         if need_weights:

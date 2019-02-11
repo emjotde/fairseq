@@ -14,6 +14,8 @@ import torch.nn.functional as F
 from fairseq import options
 from fairseq import utils
 
+import numpy as np
+
 from fairseq.modules import (
     AdaptiveInput, AdaptiveSoftmax, CharacterTokenEmbedder, LearnedPositionalEmbedding, MultiheadAttention,
     SinusoidalPositionalEmbedding
@@ -45,6 +47,10 @@ class TransformerModel(FairseqModel):
 
     def __init__(self, encoder, decoder):
         super().__init__(encoder, decoder)
+
+    def marianize(self, marian):
+        self.encoder.marianize(marian)
+        self.decoder.marianize(marian)
 
     @staticmethod
     def add_args(parser):
@@ -146,6 +152,7 @@ class TransformerModel(FairseqModel):
 
         encoder = TransformerEncoder(args, src_dict, encoder_embed_tokens)
         decoder = TransformerDecoder(args, tgt_dict, decoder_embed_tokens)
+
         return TransformerModel(encoder, decoder)
 
 
@@ -255,7 +262,6 @@ class TransformerLanguageModel(FairseqLanguageModel):
         )
         return TransformerLanguageModel(decoder)
 
-
 class TransformerEncoder(FairseqEncoder):
     """
     Transformer encoder consisting of *args.encoder_layers* layers. Each layer
@@ -295,6 +301,33 @@ class TransformerEncoder(FairseqEncoder):
         if self.normalize:
             self.layer_norm = LayerNorm(embed_dim)
 
+    # TODO: biases and layer norm params for trained models
+    def marianize(self, marian):
+        def toTorch(tt, num):
+            tt.data = torch.from_numpy(num).float().to(tt.data.device)
+
+        m = marian
+        toTorch(self.embed_tokens.weight, m["Wemb"])
+        # nn.init.constant_(self.embed_tokens.weight[self.padding_idx], 0)
+        # TODO: position embeddings
+
+        t = np.transpose
+        for i, layer in enumerate(self.layers):
+            mh = layer.self_attn
+
+            p = np.concatenate((
+                    t(m["encoder_l%s_self_Wq" % (i + 1,)]),
+                    t(m["encoder_l%s_self_Wk" % (i + 1,)]),
+                    t(m["encoder_l%s_self_Wv" % (i + 1,)])
+                ), axis=0)
+
+            toTorch(mh.in_proj_weight, p)
+            toTorch(mh.out_proj.weight, t(m["encoder_l%s_self_Wo" % (i + 1,)]))
+
+            toTorch(layer.fc1.weight, t(m["encoder_l%s_ffn_W1" % (i + 1,)]))
+            toTorch(layer.fc2.weight, t(m["encoder_l%s_ffn_W2" % (i + 1,)]))
+
+
     def forward(self, src_tokens, src_lengths):
         """
         Args:
@@ -312,8 +345,10 @@ class TransformerEncoder(FairseqEncoder):
         """
         # embed tokens and positions
         x = self.embed_scale * self.embed_tokens(src_tokens)
+
         if self.embed_positions is not None:
             x += self.embed_positions(src_tokens)
+
         x = F.dropout(x, p=self.dropout, training=self.training)
 
         # B x T x C -> T x B x C
@@ -325,7 +360,7 @@ class TransformerEncoder(FairseqEncoder):
             encoder_padding_mask = None
 
         # encoder layers
-        for layer in self.layers:
+        for i, layer in enumerate(self.layers):
             x = layer(x, encoder_padding_mask)
 
         if self.normalize:
@@ -446,6 +481,39 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         if self.normalize:
             self.layer_norm = LayerNorm(embed_dim)
 
+    # TODO: biases and layer norm params for trained models
+    def marianize(self, marian):
+        def toTorch(tt, num):
+            tt.data = torch.from_numpy(num).float().to(tt.data.device)
+
+        m = marian
+        t = np.transpose
+
+        for i, layer in enumerate(self.layers):
+            self_mh = layer.self_attn
+            enc_mh = layer.encoder_attn
+
+            self_p = np.concatenate((
+                    t(m["decoder_l%s_self_Wq" % (i + 1,)]),
+                    t(m["decoder_l%s_self_Wk" % (i + 1,)]),
+                    t(m["decoder_l%s_self_Wv" % (i + 1,)])
+                ), axis=0)
+
+            toTorch(self_mh.in_proj_weight, self_p)
+            toTorch(self_mh.out_proj.weight, t(m["decoder_l%s_self_Wo" % (i + 1,)]))
+
+            encoder_p = np.concatenate((
+                    t(m["decoder_l%s_context_Wq" % (i + 1,)]),
+                    t(m["decoder_l%s_context_Wk" % (i + 1,)]),
+                    t(m["decoder_l%s_context_Wv" % (i + 1,)])
+                ), axis=0)
+
+            toTorch(enc_mh.in_proj_weight, encoder_p)
+            toTorch(enc_mh.out_proj.weight, t(m["decoder_l%s_context_Wo" % (i + 1,)]))
+
+            toTorch(layer.fc1.weight, t(m["decoder_l%s_ffn_W1" % (i + 1,)]))
+            toTorch(layer.fc2.weight, t(m["decoder_l%s_ffn_W2" % (i + 1,)]))
+
     def forward(self, prev_output_tokens, encoder_out=None, incremental_state=None):
         """
         Args:
@@ -480,8 +548,14 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         if self.project_in_dim is not None:
             x = self.project_in_dim(x)
 
+        print(x)
+        #x.register_hook(print)
+
         if positions is not None:
             x += positions
+
+        # print(x)
+
         x = F.dropout(x, p=self.dropout, training=self.training)
 
         # B x T x C -> T x B x C
@@ -491,7 +565,7 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         inner_states = [x]
 
         # decoder layers
-        for layer in self.layers:
+        for i, layer in enumerate(self.layers):
             x, attn = layer(
                 x,
                 encoder_out['encoder_out'] if encoder_out is not None else None,
@@ -500,6 +574,7 @@ class TransformerDecoder(FairseqIncrementalDecoder):
                 self_attn_mask=self.buffered_future_mask(x) if incremental_state is None else None,
             )
             inner_states.append(x)
+            # print(x)
 
         if self.normalize:
             x = self.layer_norm(x)
@@ -707,6 +782,7 @@ class TransformerDecoderLayer(nn.Module):
             need_weights=False,
             attn_mask=self_attn_mask,
         )
+
         x = F.dropout(x, p=self.dropout, training=self.training)
         x = residual + x
         x = self.maybe_layer_norm(self.self_attn_layer_norm, x, after=True)
@@ -721,6 +797,7 @@ class TransformerDecoderLayer(nn.Module):
                 prev_key, prev_value = prev_attn_state
                 saved_state = {"prev_key": prev_key, "prev_value": prev_value}
                 self.encoder_attn._set_input_buffer(incremental_state, saved_state)
+
             x, attn = self.encoder_attn(
                 query=x,
                 key=encoder_out,
@@ -730,6 +807,7 @@ class TransformerDecoderLayer(nn.Module):
                 static_kv=True,
                 need_weights=(not self.training and self.need_attn),
             )
+
             x = F.dropout(x, p=self.dropout, training=self.training)
             x = residual + x
             x = self.maybe_layer_norm(self.encoder_attn_layer_norm, x, after=True)

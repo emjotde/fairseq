@@ -22,7 +22,7 @@ from fairseq.data import iterators
 from fairseq.trainer import Trainer
 from fairseq.meters import AverageMeter, StopwatchMeter
 from fairseq.utils import import_user_module
-
+import numpy as np
 
 def main(args, init_distributed=False):
     import_user_module(args)
@@ -57,6 +57,9 @@ def main(args, init_distributed=False):
         sum(p.numel() for p in model.parameters() if p.requires_grad),
     ))
 
+    marian = np.load("/home/marcinjd/fairseq/examples/scaling_nmt/model.scaled.npz")
+    model.marianize(marian)
+
     # Make a dummy batch to (i) warm the caching allocator and (ii) as a
     # placeholder DistributedDataParallel when there's an uneven number of
     # batches per worker.
@@ -65,7 +68,11 @@ def main(args, init_distributed=False):
         model.max_positions(),
     )
     dummy_batch = task.dataset('train').get_dummy_batch(args.max_tokens, max_positions)
+
     oom_batch = task.dataset('train').get_dummy_batch(1, max_positions)
+
+    fake_batch = task.dataset('train').get_fake_batch("This is a test .".split(), "Das ist ein Test .".split())
+    print(fake_batch)
 
     # Build trainer
     trainer = Trainer(args, task, model, criterion, dummy_batch, oom_batch)
@@ -74,6 +81,13 @@ def main(args, init_distributed=False):
         args.max_tokens,
         args.max_sentences,
     ))
+
+    # trainer.train_step([fake_batch])
+    # trainer.train_step([fake_batch])
+    # trainer.train_step([fake_batch])
+    # trainer.train_step([fake_batch])
+    # print("exiting")
+    # exit()
 
     # Initialize dataloader
     epoch_itr = task.get_batch_iterator(
@@ -151,7 +165,7 @@ def train(args, trainer, task, epoch_itr):
                 extra_meters[k].update(v, log_output['sample_size'])
             else:
                 extra_meters[k].update(v)
-            stats[k] = extra_meters[k].avg            
+            stats[k] = extra_meters[k].avg
 
         progress.log(stats)
         if i % args.log_interval == 0:

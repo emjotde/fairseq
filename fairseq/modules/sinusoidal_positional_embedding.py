@@ -31,6 +31,7 @@ class SinusoidalPositionalEmbedding(nn.Module):
             embedding_dim,
             padding_idx,
         )
+        #self.weights[padding_idx, :] = self.weights[2, :] # @TODO
         self.onnx_trace = False
         self.register_buffer('_float_tensor', torch.FloatTensor(1))
 
@@ -52,8 +53,9 @@ class SinusoidalPositionalEmbedding(nn.Module):
         if embedding_dim % 2 == 1:
             # zero pad
             emb = torch.cat([emb, torch.zeros(num_embeddings, 1)], dim=1)
-        if padding_idx is not None:
-            emb[padding_idx, :] = 0
+        # if padding_idx is not None:
+        #     emb[padding_idx, :] = 0
+
         return emb
 
     def forward(self, input, incremental_state=None, timestep=None):

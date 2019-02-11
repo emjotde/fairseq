@@ -32,6 +32,10 @@ class FairseqDataset(torch.utils.data.Dataset):
         """Return a dummy batch with a given number of tokens."""
         raise NotImplementedError
 
+    def get_fake_batch(self, src, trg):
+        """Return a dummy batch with a given number of tokens."""
+        raise NotImplementedError
+
     def num_tokens(self, index):
         """Return the number of tokens in a sample. This value is used to
         enforce ``--max-tokens`` during batching."""

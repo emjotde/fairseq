@@ -30,7 +30,7 @@ def collate_tokens(values, pad_idx, eos_idx, left_pad, move_eos_to_beginning=Fal
         assert dst.numel() == src.numel()
         if move_eos_to_beginning:
             assert src[-1] == eos_idx
-            dst[0] = eos_idx
+            dst[0] = eos_idx # changed from eos_idx
             dst[1:] = src[:-1]
         else:
             dst.copy_(src)

@@ -202,6 +202,23 @@ class LanguagePairDataset(FairseqDataset):
             for i in range(bsz)
         ])
 
+    def get_fake_batch(self, src, tgt):
+        def indices(words, vocab):
+            length = len(words) + 1
+            t = torch.Tensor(length).long()
+            for i, w in enumerate(words):
+                t[i] = vocab.index(w)
+            t[-1] = vocab.eos()
+            return t
+
+        return self.collater([
+            {
+                'id': 0,
+                'source': indices(src, self.src_dict),
+                'target': indices(tgt, self.tgt_dict)
+            }
+        ])
+
     def num_tokens(self, index):
         """Return the number of tokens in a sample. This value is used to
         enforce ``--max-tokens`` during batching."""
